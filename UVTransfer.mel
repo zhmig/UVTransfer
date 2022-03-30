@@ -1,0 +1,91 @@
+//UV Transform Tools
+//Creation time: 2017-07-12
+//Author: Houming.Zheng
+//E-mail:zhmig@foxmail.com
+
+
+global proc massUVTransfer(){
+	global string $MUVwin = "massUVTransfer";
+	global string $MUV_theobject;
+  	if (`window -ex $MUVwin`) {deleteUI $MUVwin;}
+        window -t "UVs Transfer Tools" -rtf 1 -w 370 -h 120 -mnb 1 -mxb 0 -s off $MUVwin;
+            columnLayout -w 100 -cw 100 -adj on -cal "center" -rs 10 -cat "both" 10 MainColumn;
+            radioButtonGrp -cw 1 60 -cal 1 left -nrb 2 -sl 1 -l "UV mode" -l1 "1U" -l2 "2U" 
+                            -cc1 "radioButtonGrp -e -ed off \"selUv_radioBtn\";" 
+                            -cc2 "radioButtonGrp -e -ed on \"selUv_radioBtn\";"
+                            "uvmode_radioBtn";
+            radioButtonGrp -nrb 2 -l "Which One: " -l1 "No.1" -l2 "No.2" -ed false "selUv_radioBtn";
+	
+                button -w 100 -h 40 -l "Specify Object" -c "MUV_specify()" -ann "指定要传 UV 的对象.";
+                text -w 100 -al "center" -fn "smallBoldLabelFont" -l ($MUV_theobject) -ann "这是当前指定要传 UV 的对象.";
+                button -w 100 -h 40 -l "Transfer UVs" -c "MUV_transfer()" -ann "选定对象, 从指定对象传递 UV.";
+        showWindow;
+}
+
+
+// *** SPECIFY ORIGIN-OBJECT
+
+global proc MUV_specify(){
+	string $MUV_original[] = `ls -sl -tr`;
+	if ( size ($MUV_original[0]) == 0 ){
+	    confirmDialog -t "Oops..." -m "Specify an object to transfer UVs from." -b Continue;
+	    return;
+	}
+	global string $MUV_theobject;
+	$MUV_theobject = $MUV_original[0];
+	massUVTransfer;
+}
+
+
+// *** TRANSFER UVs
+
+global proc MUV_transfer(){
+    int $uvmode_v = `radioButtonGrp -q -sl "uvmode_radioBtn"`;
+    
+	global string $MUV_theobject;
+	string $MUV_selection[] = `ls -sl -tr`;
+	int $MUV_objectnum;
+	$MUV_objectnum = size ($MUV_selection);
+	if ( size ($MUV_selection[0]) == 0 ){
+	    confirmDialog -t "Oops..." -m "Select objects to transfer UVs to." -b Continue;
+	    return;
+	}
+    
+    if ($uvmode_v == 1){
+        for ($i = 0; $i < $MUV_objectnum; $i++){
+            polyTransfer -vc 0 -uv 1 -v 0 -ao $MUV_theobject $MUV_selection[$i];
+        }
+    }
+    else{
+        for ($i = 0; $i < $MUV_objectnum; $i++){
+            string $temp_uv = "uv_set_temp" + $i;
+            string $orig_mesh;
+            string $list_mesh_shape[] = `listRelatives $MUV_selection[$i]`;
+            for ($x in $list_mesh_shape){
+                if (`gmatch $x "*Orig"` == 1){
+                    $orig_mesh = $x;
+                    print $orig_mesh;
+                }
+            }
+            //int $indices[] = `polyUVSet -q -uvn $MUV_selection[$i]`;
+            int $uv_no = `radioButtonGrp -q -sl "selUv_radioBtn"`;
+            string $uvName_one = `getAttr ($orig_mesh+".uvSet[0].uvSetName")`;
+            string $uvName_two = `getAttr ($orig_mesh+".uvSet[1].uvSetName")`;
+            setAttr ($orig_mesh + ".intermediateObject") 0;
+            if($uv_no == 1){
+                transferAttributes -pos 0 -nml 0 -uvs 2 -tcs 2 -spa 4 -sus $uvName_one -sm 3 -fuv 0 -clb 1 $MUV_theobject $orig_mesh;
+            }
+            else{
+                polyCopyUV -uvi $uvName_one -uvs $temp_uv -cm 1 -ch 1 $orig_mesh;
+                transferAttributes -pos 0 -nml 0 -uvs 2 -tcs 2 -spa 4 -sus $uvName_one -sm 3 -fuv 0 -clb 1 $MUV_theobject $orig_mesh;
+                polyCopyUV -uvSetNameInput $uvName_one -uvSetName $uvName_two  -ch 1 $orig_mesh;
+                polyCopyUV -uvSetNameInput $temp_uv -uvSetName $uvName_one  -ch 1 $orig_mesh;
+                polyUVSet -delete -uvSet $temp_uv ;
+            }
+            delete -ch $orig_mesh;
+            setAttr ($orig_mesh + ".intermediateObject") 1;
+        }
+    }
+    
+}
+massUVTransfer;
